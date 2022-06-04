@@ -1,0 +1,22 @@
+body{
+    padding-top: 10px;
+  }
+  
+  .log-field{
+    min-height: 350px;
+  }
+  
+  label, .btn{
+    cursor: pointer;
+  }
+  
+  .center-items {
+    display: flex;
+    align-items: center;
+  }
+  
+  .btn-active{
+    color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
+  }

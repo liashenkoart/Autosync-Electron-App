@@ -1,0 +1,68 @@
+{
+  "name": "auto-sync-win_upload",
+  "version": "1.0.0",
+  "description": "Application for uploading",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack-win": "electron-builder --dir --win",
+    "dist": "electron-builder"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acqhq/auto-sync-win_upload.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/acqhq/auto-sync-win_upload/issues"
+  },
+  "homepage": "https://github.com/acqhq/auto-sync-win_upload#readme",
+  "devDependencies": {
+    "electron": "^11.2.0",
+    "electron-builder": "^23.0.3",
+    "electron-packager": "^15.5.1",
+    "electron-rebuild": "^3.2.7",
+    "eslint": "^8.17.0",
+    "eslint-config-standard": "^17.0.0",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.0.0"
+  },
+  "dependencies": {
+    "auto-launch": "^5.0.5",
+    "axios": "^0.27.2",
+    "crypto": "^1.0.1",
+    "electron-log": "^4.4.7",
+    "electron-reload": "^2.0.0-alpha.1",
+    "jwt-decode": "^3.1.2",
+    "keytar": "^7.9.0",
+    "node-powershell": "^5.0.1",
+    "querystring": "^0.2.1",
+    "request": "^2.88.2",
+    "rimraf": "^3.0.2",
+    "underscore": "^1.13.4"
+  },
+  "build": {
+    "appId": "12345678",
+    "dmg": {
+      "contents": [
+        {
+          "x": 110,
+          "y": 150
+        },
+        {
+          "x": 240,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        "zip"
+      ]
+    }
+  }
+}

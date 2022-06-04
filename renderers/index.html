@@ -1,0 +1,84 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Auto Sync Win Upload</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; object-src 'self'" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <link href="css/index.css" rel="stylesheet" />
+</head>
+<body style="background: white;">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-6">
+        <span>User name:</span>
+        <span id="current-user-name"></span>
+      </div>
+      <div class="col-6">
+        <button class="btn btn-secondary float-right" id="logout">Logout</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-6 offset-6">
+        <label>
+          <input type="checkbox" id="launch_at_startup">
+          <span>Launch at startup</span>
+        </label>
+      </div>
+      <div class="col-6 offset-6">
+        <label>
+          <input type="checkbox" id="sync_when_start">
+          <span>Start sync when this app start</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <div class="btn-group btn-group-toggle" data-toggle="buttons">
+        <label class="btn btn-secondary" id="btn-sync">
+          <input type="radio" disabled> Sync
+        </label>
+        <label class="btn btn-secondary btn-active" id="btn-stop-sync">
+          <input type="radio"> Stop
+        </label>
+      </div>
+    </div>
+
+    <div class="mb-3 row">
+      <div class='col-2 center-items'>
+        <span>Site</span>
+      </div>
+      <div class='col-10'>
+        <select id="select-site" class="custom-select">
+          <option value="" selected>Select one</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mb-3 row">
+      <div class='col-2 center-items'>
+        <span>Bucket</span>
+      </div>
+      <div class='col-10'>
+        <select id='select-bucket' class="custom-select" disabled>
+          <option value="" disabled>Select one</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mb-3 row">
+      <div class='col-2 center-items'>
+        <span>Folder</span>
+      </div>
+      <div class='col-10'>
+       <input id="select-folder" type="text" class="form-control" placeholder="/uploaded">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="exampleFormControlTextarea1">Log</label>
+      <textarea class="form-control log-field" id='logTextarea'></textarea>
+    </div>
+  </div>
+</body>
+</html>
