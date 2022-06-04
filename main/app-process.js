@@ -5,12 +5,14 @@ function createAppWindow () {
     width: 800,
     height: 600,
     webPreferences: {
+      devTools: true,
       nodeIntegration: true,
       enableRemoteModule: true
-    }
+    },
   });
 
   win.loadFile('renderers/index.html');
+  win.webContents.openDevTools()
   win.removeMenu()
   win.on('closed', () => {
     win = null;
