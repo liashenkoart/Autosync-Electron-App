@@ -1,14 +1,17 @@
-const { apiDomain } = require('../env-variables.json');
-const authService = require('./auth-service');
-const constants = require('../lib/constants');
 const { app, BrowserWindow } = require('electron');
+const Shell = require('node-powershell');
+const fs = require('fs');
+const os = require('os');
 const qs = require('querystring');
-const rimraf = require('rimraf')
+
 const axios = require('axios');
 const path = require('path');
-const fs = require('fs');
-const Shell = require('node-powershell');
-const os = require('os');
+const rimraf = require('rimraf')
+
+const authService = require('./auth-service');
+const constants = require('../lib/constants');
+
+const apiDomain = process.env.ApiDomain;
 
 const isWindow = (os.platform() === 'win32');
 

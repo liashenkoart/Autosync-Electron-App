@@ -1,3 +1,4 @@
+require('dotenv').config()
 const { app, ipcMain } = require('electron');
 const AutoLaunch = require('auto-launch');
 const path = require('path');

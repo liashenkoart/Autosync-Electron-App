@@ -1,13 +1,12 @@
 const jwtDecode = require('jwt-decode');
 const axios = require('axios');
 const url = require('url');
-const envVariables = require('../env-variables');
 const keytar = require('keytar');
 const os = require('os');
 const qs = require('querystring');
 const crypto = require('crypto');
-
-const { oauthDomain, clientId } = envVariables;
+const oauthDomain = process.env.OAuthDomain;
+const clientId = process.env.ClientId
 
 function base64URLEncode (str) {
   return str.toString('base64')
