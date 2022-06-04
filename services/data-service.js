@@ -153,6 +153,39 @@ async function downloadFile (bucketId, nodeId, fileName, willOpenFile) {
   })
 }
 
+async function uploadFile() {
+  const downloadsFolder = app.getPath('downloads');
+
+  const finalPath = `${downloadsFolder}/${fileName}`;
+  const out = fs.createReadStream(finalPath);
+
+  win.webContents.send('downloadingFile', fileName)
+  ///v2/file_storage/buckets/:bucket_id/upload
+  const response = await axiosInstance({
+    url: `/file_storage/buckets/${bucketId}/upload?node_id=${nodeId}`,
+    responseType: 'stream'
+  })
+
+  response.data.pipe(out);
+
+  return new Promise((resolve, reject) => {
+    out.on('finish', () => {
+      if (isWindow && willOpenFile) {
+        ps.addCommand('taskkill /F /IM ARESS.exe');
+        ps.invoke().catch(error => {});
+        ps.addCommand(`start "${constants.PROGRAM_PATH}" "${finalPath}"`);
+        ps.invoke();
+      }
+      win.webContents.send('uploadDone', fileName)
+      resolve
+    });
+
+    out.on('error', () => {
+      reject
+    });
+  })
+}
+
 function removeExpireLogFiles () {
   const uploadsDir = './logs/';
   if (!fs.existsSync(uploadsDir)) {

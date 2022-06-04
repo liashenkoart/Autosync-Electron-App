@@ -8,6 +8,10 @@ require('electron-reload')(__dirname, {
   hardResetMethod: 'quit'
 });
 
+const Store = require('electron-store');
+
+Store.initRenderer();
+
 const authProcess = require('./main/auth-process');
 const createAppWindow = require('./main/app-process');
 const authService = require('./services/auth-service');
