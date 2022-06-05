@@ -40,7 +40,7 @@ function getProfile () {
 
 function getAuthenticationURL () {
   const params = {
-    scope: 'openid profile offline_access site.read file_storage.read file_storage.download resource_owner.read resource_owner.write user.profile user.read',
+    scope: 'openid profile offline_access site.read file_storage.read file_storage.download file_storage.upload file_storage.write resource_owner.read resource_owner.write user.profile user.read',
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,

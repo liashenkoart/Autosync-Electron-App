@@ -7,9 +7,11 @@ const qs = require('querystring');
 const axios = require('axios');
 const path = require('path');
 const rimraf = require('rimraf')
+const FormData = require('form-data');
 
 const authService = require('./auth-service');
 const constants = require('../lib/constants');
+const uploader = require('./uploader');
 
 const apiDomain = process.env.ApiDomain;
 
@@ -22,9 +24,9 @@ const ps = new Shell({
   noProfile: true
 });
 
-const axiosInstance = axios.create({
-  baseURL: `https://${apiDomain}/v2/`
-})
+const baseURL = `https://${apiDomain}/v2/`;
+
+const axiosInstance = axios.create({ baseURL });
 
 axiosInstance.interceptors.request.use(
   config => {
@@ -44,6 +46,8 @@ axiosInstance.interceptors.response.use((response) => {
   return response;
 }, async function (error) {
   const originalRequest = error.config;
+  console.log(error);
+  console.log(error.response.data.errors);
   if (error.response.status === 401 && originalRequest.url.endsWith('/connect/token')) {
     return Promise.reject(error);
   }
@@ -53,24 +57,24 @@ axiosInstance.interceptors.response.use((response) => {
     return axiosInstance(originalRequest);
   }
 
-  return Promise.reject(error);
+  return Promise.reject(error.response.data.message);
 })
 
-function loadSites () {
+function loadSites() {
   return axiosInstance.get('/sites').then(response => response.data)
     .catch(error => {
       console.log(error);
     });
 }
 
-function getUserInfo () {
+function getUserInfo() {
   return axiosInstance.get('/me').then(response => response.data)
     .catch(error => {
       console.log(error);
     });
 }
 
-function getBuckets (resourceOwnerId) {
+function getBuckets(resourceOwnerId) {
   const params = {
     resource_owner_id: resourceOwnerId
   }
@@ -81,14 +85,14 @@ function getBuckets (resourceOwnerId) {
     });
 }
 
-function getResourceOwners () {
+function getResourceOwners() {
   return axiosInstance.get('/resource_owners').then(response => response.data)
     .catch(error => {
       console.log(error);
     });
 }
 
-function getFolder (bucket, key) {
+function getFolder(bucket, key) {
   const params = {
     key: key
   };
@@ -98,7 +102,7 @@ function getFolder (bucket, key) {
     });
 }
 
-function getFiles (bucket, parentNodeId) {
+function getFiles(bucket, parentNodeId) {
   const params = {
     parent_node_id: parentNodeId,
     order_by: 'created_at',
@@ -112,81 +116,76 @@ function getFiles (bucket, parentNodeId) {
     });
 }
 
-function getCurrentDateTimeString (date) {
+function getCurrentDateTimeString(date) {
   return Date.parse(date.toDateString());
 }
 
-async function downloadFile (bucketId, nodeId, fileName, willOpenFile) {
-  const downloadsFolder = app.getPath('downloads');
-
-  if (!fs.existsSync(downloadsFolder)) {
-    fs.mkdirSync(downloadsFolder);
-  }
-
-  const finalPath = `${downloadsFolder}/${fileName}`;
-  const out = fs.createWriteStream(finalPath);
-
-  win.webContents.send('downloadingFile', fileName)
-
-  const response = await axiosInstance({
-    url: `/file_storage/buckets/${bucketId}/download?node_id=${nodeId}`,
-    responseType: 'stream'
-  })
-
-  response.data.pipe(out);
-
+function uploadFile(folderPath, fileName, fileChecksum, bucketId, key, parentNodeId) {
   return new Promise((resolve, reject) => {
-    out.on('finish', () => {
-      if (isWindow && willOpenFile) {
-        ps.addCommand('taskkill /F /IM ARESS.exe');
-        ps.invoke().catch(error => {});
-        ps.addCommand(`start "${constants.PROGRAM_PATH}" "${finalPath}"`);
-        ps.invoke();
-      }
-      win.webContents.send('downloadDone', fileName)
-      resolve
-    });
+    try {
+      //   fs.readFile(folderPath + fileName, async (err, fileData) => {
+      //     if (err) {
+      //       console.log(err);
+      //       return resolve(err);
+      //     }
 
-    out.on('error', () => {
-      reject
-    });
-  })
+      //     let formData = new FormData();
+      //     formData.append(fileName, fileData);
+
+      //     formData.getLength((err, length) => {
+      //       const checksum = fileChecksum.replace('/', '%2F').replace('+', '%2B')
+
+      //       axiosInstance({
+      //       url: `/file_storage/buckets/${bucketId}/upload`,
+      //       method: 'PUT',
+      //       headers: {
+      //         ...formData.getHeaders(),
+      //         "Content-Length": length
+      //       },
+      //       data: formData,
+      // params: {
+      //   key: key + fileName,
+      //   checksum: fileChecksum,
+      // }
+      //     }).then(res => resolve(res))
+      //         .catch(err => resolve(err));
+      //   });
+      // });
+      const params = {
+        key: key + fileName,
+        checksum: fileChecksum,
+      };
+
+      const url = baseURL + `file_storage/buckets/${bucketId}/upload?${qs.stringify(params)}`;
+
+      fs.readFile(folderPath + fileName, (err, file) => {
+        uploader()
+          .onProgress(({ loaded, total }) => {
+            const percent = Math.round(loaded / total * 100 * 100) / 100;
+          })
+          .options({
+            chunkSize: 10 * 1024 * 1024,
+            threadsQuantity: 1,
+            url,
+          })
+          .send(file)
+          .end((error, data) => {
+            if (error) {
+              console.log("Error", error);
+              return resolve();
+            }
+          });
+      });
+
+
+    } catch (err) {
+      console.log(err);
+      resolve(err);
+    }
+  });
 }
 
-async function uploadFile() {
-  const downloadsFolder = app.getPath('downloads');
-
-  const finalPath = `${downloadsFolder}/${fileName}`;
-  const out = fs.createReadStream(finalPath);
-
-  win.webContents.send('downloadingFile', fileName)
-  ///v2/file_storage/buckets/:bucket_id/upload
-  const response = await axiosInstance({
-    url: `/file_storage/buckets/${bucketId}/upload?node_id=${nodeId}`,
-    responseType: 'stream'
-  })
-
-  response.data.pipe(out);
-
-  return new Promise((resolve, reject) => {
-    out.on('finish', () => {
-      if (isWindow && willOpenFile) {
-        ps.addCommand('taskkill /F /IM ARESS.exe');
-        ps.invoke().catch(error => {});
-        ps.addCommand(`start "${constants.PROGRAM_PATH}" "${finalPath}"`);
-        ps.invoke();
-      }
-      win.webContents.send('uploadDone', fileName)
-      resolve
-    });
-
-    out.on('error', () => {
-      reject
-    });
-  })
-}
-
-function removeExpireLogFiles () {
+function removeExpireLogFiles() {
   const uploadsDir = './logs/';
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir);
@@ -216,10 +215,10 @@ module.exports = {
   loadSites,
   getUserInfo,
   getBuckets,
-  downloadFile,
   getFiles,
   getFolder,
   getCurrentDateTimeString,
   removeExpireLogFiles,
-  getResourceOwners
+  getResourceOwners,
+  uploadFile
 }

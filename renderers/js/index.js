@@ -1,21 +1,21 @@
 const { ipcRenderer, remote } = require('electron');
 const { app } = require('electron').remote;
-const dataService = remote.require('./services/data-service');
-const constants = require('../lib/constants');
 const Store = require('electron-store');
 const _ = require('underscore');
-const path = require('path');
 const dayjs = require('dayjs');
 const log = require('electron-log');
 const $ = require('jquery');
 
-const store = new Store();
-let checkNewFileInterval = null;
+const fileSystemService = remote.require('./services/fileSystem-service');
+const serverService = remote.require('./services/server-service');
 
-store.set('log_id', dataService.getCurrentDateTimeString(new Date()))
+const store = new Store();
+let checkNewFileTimeout = null;
+let uploading = false;
+
+store.set('log_id', serverService.getCurrentDateTimeString(new Date()))
 
 _.map(store.store, function (value, key) {
-    console.log(key, value);
     $(`#${key}`).attr('checked', value)
 })
 
@@ -52,14 +52,17 @@ function disableSyncWhenStart() {
 
 $('#btn-stop-sync').on('click', function () {
     disabledBtnSync();
-    window.clearInterval(checkNewFileInterval);
+    window.clearInterval(checkNewFileTimeout);
 })
 
 $('#btn-sync').on('click', function (event) {
     event.preventDefault();
     if (checkRequiredAllFields()) {
         enableBtnSync();
-        checkNewFileInterval = setInterval(checkNewFile, 5000);
+
+        checkNewFile();
+
+        // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
     }
 })
 
@@ -93,14 +96,19 @@ $().on('change', function () {
 })
 
 function checkNewFile() {
+    if (uploading) return;
+
     const bucketId = $('#select-bucket option:selected').val();
     const key = $('#select-folder').val();
-    dataService.getFolder(bucketId, key).then((response) => {
+
+    serverService.getFolder(bucketId, key).then(async (response) => {
         if (response) {
-            console.log('getFolder', response);
             const parentNodeId = response.nodes[0].id
             console.log('checking new file...')
-            uploadFiles(bucketId, parentNodeId)
+
+            // uploadFiles(bucketId, parentNodeId, response.nodes[0].key).finally(() => {
+                // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
+            // })
         }
     })
 }
@@ -108,11 +116,11 @@ function checkNewFile() {
 function loadBuckets(isStartApp = false) {
     const siteId = $('#select-site option:selected').val();
     $('#select-bucket').find('option').remove().end().append("<option value='' selected='selected'>Select one</option>");
-    dataService.getResourceOwners().then((response) => {
+    serverService.getResourceOwners().then((response) => {
         const resourceOwners = response.resource_owners
         _.map(resourceOwners, function (resourceOwner) {
             if (siteId === resourceOwner.group_id) {
-                dataService.getBuckets(resourceOwner.id).then((response) => {
+                serverService.getBuckets(resourceOwner.id).then((response) => {
                     const buckets = response.buckets
                     _.map(buckets, function (bucket) {
                         $('#select-bucket').append(new Option(bucket.name, bucket.id));
@@ -141,45 +149,36 @@ function resetSelectedStore() {
     store.set('selected', selected)
 }
 
-function uploadFiles(bucketId, parentNodeId) {
-    dataService.getFiles(bucketId, parentNodeId).then((response) => {
-        const nodes = filterFilesByType(response.nodes);
-        let willOpenFile = false;
-        let newestFileCreatedAt = null;
-        _.map(nodes, function (node, index) {
-            if (!node.is_directory && node.file.size > 0 && checkIsNewFile(node.created_at)) {
-                logMessage(`New file is found: ${node.name}`);
-                if (index === 0) {
-                    // first file is the newest
-                    willOpenFile = true;
-                    newestFileCreatedAt = node.created_at;
-                }
+function uploadFiles(bucketId, parentNodeId, key) {
+    return new Promise((resolve, reject) => {
+        serverService.getFiles(bucketId, parentNodeId).then((response) => {
+            const folderPath = store.get('selected').folderPath;
+            console.log(response.nodes[0].key);
+            if (response.nodes.length > 0) {
+                fileSystemService.getFiles(folderPath).then(async (localFiles) => {
+                    console.log('localFiles', localFiles);
+                    const serverFiles = response.nodes.map(node => ({
+                        name: node.name,
+                        checksum: node.file.checksum
+                    }));
+    
+                    for (const localFile of localFiles) {
+                        const serverFile = serverFiles.find(file => file.name === localFile.name &&
+                            file.checksum === localFile.checksum)
+    
+                        if (typeof serverFile === 'undefined') {
+                            logMessage(`Uploading new file: ${localFile.name}`);
+                            const res = await serverService.uploadFile(folderPath, localFile.name, localFile.checksum, bucketId, key, parentNodeId);
+                            
+                            logMessage(localFile.name + ': ' + res);
+                        }
+                    }
 
-                // dataService.downloadFile(bucketId, node.id, node.name, willOpenFile)
+                    resolve();
+                });
             }
-        })
-
-        if (newestFileCreatedAt) {
-            store.set('lastDownloadedFileCreatedAt', newestFileCreatedAt);
-        }
+        });
     })
-}
-
-function filterFilesByType(fileArray) {
-    const newListFiles = []
-    _.map(fileArray, function (node) {
-        const fileType = path.extname(node.name)
-        if (fileType === constants.ACCEPT_FILE_TYPE) {
-            newListFiles.push(node)
-        }
-    })
-    return newListFiles;
-}
-
-function checkIsNewFile(newFileCreatedAt) {
-    const lastDownloadedFileCreatedAt = store.get('lastDownloadedFileCreatedAt')
-
-    return !lastDownloadedFileCreatedAt || parseInt(newFileCreatedAt) > parseInt(lastDownloadedFileCreatedAt);
 }
 
 function fillData() {
@@ -221,7 +220,8 @@ function syncWhenStart() {
     if (store.get('sync_when_start')) {
         if (checkRequiredAllFields()) {
             enableBtnSync();
-            checkNewFileInterval = setInterval(checkNewFile, 5000);
+            checkNewFile();
+            // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
         } else {
             stopSyncProcess();
         }
@@ -262,7 +262,7 @@ ipcRenderer.on('logged-out', () => {
     remote.getCurrentWindow().close();
 })
 
-dataService.getUserInfo().then((response) => {
+serverService.getUserInfo().then((response) => {
     const userName = `${response.family_name} ${response.given_name}`
     $('#current-user-name').text(userName)
 })
@@ -275,7 +275,7 @@ ipcRenderer.on('downloadingFile', (event, fileName) => {
     logMessage(`Downloading ${fileName}`);
 })
 
-dataService.loadSites().then((response) => {
+serverService.loadSites().then((response) => {
     const sites = response.sites
     _.map(sites, function (site) {
         $('#select-site').append(new Option(site.name, site.id))
