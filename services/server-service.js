@@ -7,22 +7,14 @@ const qs = require('querystring');
 const axios = require('axios');
 const path = require('path');
 const rimraf = require('rimraf')
-const FormData = require('form-data');
+const hasha = require('hasha');
+const streamLength = require('stream-length')
 
 const authService = require('./auth-service');
 const constants = require('../lib/constants');
-const uploader = require('./uploader');
+const { resolve } = require('path');
 
 const apiDomain = process.env.ApiDomain;
-
-const isWindow = (os.platform() === 'win32');
-
-const win = BrowserWindow.getFocusedWindow();
-
-const ps = new Shell({
-  executionPolicy: 'Bypass',
-  noProfile: true
-});
 
 const baseURL = `https://${apiDomain}/v2/`;
 
@@ -47,7 +39,6 @@ axiosInstance.interceptors.response.use((response) => {
 }, async function (error) {
   const originalRequest = error.config;
   console.log(error);
-  console.log(error.response.data.errors);
   if (error.response.status === 401 && originalRequest.url.endsWith('/connect/token')) {
     return Promise.reject(error);
   }
@@ -94,11 +85,16 @@ function getResourceOwners() {
 
 function getFolder(bucket, key) {
   const params = {
-    key: key
+    key: key,
+    recursive: true
   };
-  return axiosInstance.get(`/file_storage/buckets/${bucket}/nodes?${qs.stringify(params)}`).then(response => response.data)
+  return axiosInstance.get(`/file_storage/buckets/${bucket}/nodes?${qs.stringify(params)}`).then(response => {
+    console.log(response);
+    return response.data;
+  })
     .catch(error => {
       console.log(error);
+      resolve();
     });
 }
 
@@ -107,7 +103,7 @@ function getFiles(bucket, parentNodeId) {
     parent_node_id: parentNodeId,
     order_by: 'created_at',
     order: 'desc',
-    limit: 10
+    limit: 20
   };
 
   return axiosInstance.get(`/file_storage/buckets/${bucket}/nodes?${qs.stringify(params)}`).then(response => response.data)
@@ -121,61 +117,30 @@ function getCurrentDateTimeString(date) {
 }
 
 function uploadFile(folderPath, fileName, fileChecksum, bucketId, key, parentNodeId) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      //   fs.readFile(folderPath + fileName, async (err, fileData) => {
-      //     if (err) {
-      //       console.log(err);
-      //       return resolve(err);
-      //     }
-
-      //     let formData = new FormData();
-      //     formData.append(fileName, fileData);
-
-      //     formData.getLength((err, length) => {
-      //       const checksum = fileChecksum.replace('/', '%2F').replace('+', '%2B')
-
-      //       axiosInstance({
-      //       url: `/file_storage/buckets/${bucketId}/upload`,
-      //       method: 'PUT',
-      //       headers: {
-      //         ...formData.getHeaders(),
-      //         "Content-Length": length
-      //       },
-      //       data: formData,
-      // params: {
-      //   key: key + fileName,
-      //   checksum: fileChecksum,
-      // }
-      //     }).then(res => resolve(res))
-      //         .catch(err => resolve(err));
-      //   });
-      // });
       const params = {
         key: key + fileName,
         checksum: fileChecksum,
       };
 
-      const url = baseURL + `file_storage/buckets/${bucketId}/upload?${qs.stringify(params)}`;
+      const file = new LL_File(folderPath + fileName);
 
-      fs.readFile(folderPath + fileName, (err, file) => {
-        uploader()
-          .onProgress(({ loaded, total }) => {
-            const percent = Math.round(loaded / total * 100 * 100) / 100;
-          })
-          .options({
-            chunkSize: 10 * 1024 * 1024,
-            threadsQuantity: 1,
-            url,
-          })
-          .send(file)
-          .end((error, data) => {
-            if (error) {
-              console.log("Error", error);
-              return resolve();
-            }
-          });
-      });
+      axiosInstance({
+        url: `/file_storage/buckets/${bucketId}/upload`,
+        method: 'PUT',
+        headers: {
+          "Content-Length": await file.length()
+        },  
+        data: file.fs,
+        params: {
+          name: fileName,
+          parent_key: key,
+          checksum: fileChecksum,
+          force: true
+        }
+      }).then(res => resolve(res))
+        .catch(err => resolve(err));
 
 
     } catch (err) {
@@ -183,6 +148,17 @@ function uploadFile(folderPath, fileName, fileChecksum, bucketId, key, parentNod
       resolve(err);
     }
   });
+}
+
+class LL_File {
+  constructor(path) {
+    this.path = path;
+    this.fs = fs.createReadStream(path);
+  }
+
+  async length() {
+    return await streamLength(fs.createReadStream(this.path))
+  }
 }
 
 function removeExpireLogFiles() {

@@ -9,9 +9,10 @@ const $ = require('jquery');
 const fileSystemService = remote.require('./services/fileSystem-service');
 const serverService = remote.require('./services/server-service');
 
-const store = new Store();
-let checkNewFileTimeout = null;
 let uploading = false;
+
+const store = new Store();
+let checkNewFileInterval = null;
 
 store.set('log_id', serverService.getCurrentDateTimeString(new Date()))
 
@@ -41,42 +42,20 @@ $('#sync_when_start').on('click', function () {
     }
 })
 
-function stopSyncProcess() {
-    $('#btn-stop-sync').trigger('click')
-}
-
-function disableSyncWhenStart() {
-    store.set($('#sync_when_start').attr('id'), false);
-    $('#sync_when_start').prop('checked', false)
-}
-
 $('#btn-stop-sync').on('click', function () {
     disabledBtnSync();
-    window.clearInterval(checkNewFileTimeout);
+    clearInterval(checkNewFileInterval);
 })
 
 $('#btn-sync').on('click', function (event) {
     event.preventDefault();
     if (checkRequiredAllFields()) {
         enableBtnSync();
-
         checkNewFile();
 
-        // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
+        checkNewFileInterval = setInterval(checkNewFile, 5000);
     }
 })
-
-function checkRequiredAllFields() {
-    let allRequired = true;
-    if (!checkRequiredField('select-site') ||
-        !checkRequiredField('select-bucket') ||
-        !checkRequiredField('select-folder', false) ||
-        !checkRequiredField('select-path-folder')) {
-        allRequired = false;
-        stopSyncProcess();
-    }
-    return allRequired
-}
 
 $('#select-site').on('change', function () {
     setStatusSelectBucket(true);
@@ -95,22 +74,39 @@ $().on('change', function () {
     checkRequiredField('select-folder', false)
 })
 
-function checkNewFile() {
-    if (uploading) return;
+$('#select-site, #select-bucket, #select-folder').on('change', function () {
+    resetSelectedStore();
+});
 
-    const bucketId = $('#select-bucket option:selected').val();
-    const key = $('#select-folder').val();
+function stopSyncProcess() {
+    $('#btn-stop-sync').trigger('click')
+}
 
-    serverService.getFolder(bucketId, key).then(async (response) => {
-        if (response) {
-            const parentNodeId = response.nodes[0].id
-            console.log('checking new file...')
+function disableSyncWhenStart() {
+    store.set($('#sync_when_start').attr('id'), false);
+    $('#sync_when_start').prop('checked', false)
+}
 
-            // uploadFiles(bucketId, parentNodeId, response.nodes[0].key).finally(() => {
-                // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
-            // })
-        }
-    })
+function enableBtnSync() {
+    $('#btn-sync, #btn-stop-sync').removeClass('btn-active');
+    $('#btn-sync').addClass('btn-active');
+}
+
+function disabledBtnSync() {
+    $('#btn-sync, #btn-stop-sync').removeClass('btn-active');
+    $('#btn-stop-sync').addClass('btn-active');
+}
+
+function checkRequiredAllFields() {
+    let allRequired = true;
+    if (!checkRequiredField('select-site') ||
+        !checkRequiredField('select-bucket') ||
+        !checkRequiredField('select-folder', false) ||
+        !checkRequiredField('select-path-folder')) {
+        allRequired = false;
+        stopSyncProcess();
+    }
+    return allRequired
 }
 
 function loadBuckets(isStartApp = false) {
@@ -132,9 +128,20 @@ function loadBuckets(isStartApp = false) {
     })
 }
 
-$('#select-site, #select-bucket, #select-folder').on('change', function () {
-    resetSelectedStore();
-});
+function syncWhenStart() {
+    if (store.get('sync_when_start')) {
+        if (checkRequiredAllFields()) {
+            enableBtnSync();
+            checkNewFile();
+
+            checkNewFileInterval = setInterval(checkNewFile, 5000);
+        } else {
+            stopSyncProcess();
+        }
+    } else {
+        stopSyncProcess();
+    }
+}
 
 function resetSelectedStore() {
     const siteId = $('#select-site option:selected').val();
@@ -147,38 +154,6 @@ function resetSelectedStore() {
         folderPath: store.get('selected').folderPath
     }
     store.set('selected', selected)
-}
-
-function uploadFiles(bucketId, parentNodeId, key) {
-    return new Promise((resolve, reject) => {
-        serverService.getFiles(bucketId, parentNodeId).then((response) => {
-            const folderPath = store.get('selected').folderPath;
-            console.log(response.nodes[0].key);
-            if (response.nodes.length > 0) {
-                fileSystemService.getFiles(folderPath).then(async (localFiles) => {
-                    console.log('localFiles', localFiles);
-                    const serverFiles = response.nodes.map(node => ({
-                        name: node.name,
-                        checksum: node.file.checksum
-                    }));
-    
-                    for (const localFile of localFiles) {
-                        const serverFile = serverFiles.find(file => file.name === localFile.name &&
-                            file.checksum === localFile.checksum)
-    
-                        if (typeof serverFile === 'undefined') {
-                            logMessage(`Uploading new file: ${localFile.name}`);
-                            const res = await serverService.uploadFile(folderPath, localFile.name, localFile.checksum, bucketId, key, parentNodeId);
-                            
-                            logMessage(localFile.name + ': ' + res);
-                        }
-                    }
-
-                    resolve();
-                });
-            }
-        });
-    })
 }
 
 function fillData() {
@@ -206,30 +181,6 @@ function checkRequiredField(elementId, isSelectField = true) {
     return required
 }
 
-function enableBtnSync() {
-    $('#btn-sync, #btn-stop-sync').removeClass('btn-active');
-    $('#btn-sync').addClass('btn-active');
-}
-
-function disabledBtnSync() {
-    $('#btn-sync, #btn-stop-sync').removeClass('btn-active');
-    $('#btn-stop-sync').addClass('btn-active');
-}
-
-function syncWhenStart() {
-    if (store.get('sync_when_start')) {
-        if (checkRequiredAllFields()) {
-            enableBtnSync();
-            checkNewFile();
-            // checkNewFileTimeout = setTimeout(checkNewFile, 5000);
-        } else {
-            stopSyncProcess();
-        }
-    } else {
-        stopSyncProcess();
-    }
-}
-
 function fillSelectedBucket(isStartApp = false) {
     if (store.has('selected')) {
         setStatusSelectBucket(false)
@@ -243,15 +194,6 @@ function fillSelectedBucket(isStartApp = false) {
 
 function setStatusSelectBucket(value) {
     $('#select-bucket').attr('disabled', value);
-}
-
-function logMessage(message) {
-    const dateString = dayjs().format('YYYY/MM/DD HH:mm');
-    const logMsg = `${dateString} ${message}`
-    const logsFolder = app.getPath('logs');
-    log.info(logMsg);
-    log.transports.file.file = logsFolder + `/log_${store.get('log_id')}.log`;
-    $('#logTextarea').val(function (index, old) { return logMsg + '\n' + old; });
 }
 
 $('#logout').on('click', () => {
@@ -305,4 +247,109 @@ function getFolderPath(fullPath) {
     const pathParts = fullPath.split('\\');
     const fileName = pathParts[pathParts.length - 1];
     return fullPath.replace(new RegExp(fileName + '$'), '');
+}
+
+/**
+ * Uploadin new files
+ */
+
+function checkNewFile() {
+    const bucketId = $('#select-bucket option:selected').val();
+    const key = $('#select-folder').val();
+
+    if (uploading) {
+        console.log('uploading');
+        return;
+    }
+
+    serverService.getFolder(bucketId, key).then((response) => {
+        if (response?.nodes.length > 0) {
+            const parentNodeId = response.nodes[0].id;
+
+            console.log('checking new file...')
+
+            uploading = true;
+            uploadFiles(bucketId, key, parentNodeId);
+        } else {
+            uploading = true;
+            uploadFiles(bucketId, key + '/');
+        }
+    })
+}
+
+function uploadFiles(bucketId, key, parentNodeId = false) {
+    return new Promise(async (resolve, reject) => {
+        const folderPath = store.get('selected').folderPath;
+        const localFiles = await fileSystemService.getFiles(folderPath);
+
+        let response;
+        if (parentNodeId) {
+            response = await serverService.getFiles(bucketId, parentNodeId);
+        }
+
+        if (typeof response === 'undefined' || response?.nodes.length === 0) {
+            for (const localFile of localFiles) {
+                if ($('#btn-stop-sync').hasClass('btn-active')) {
+                    uploading = false;
+                    return resolve()
+                };
+
+                logMessage(`New file is found：${localFile.name}`);
+                logMessage(`Uploading new file...: ${localFile.name}`);
+
+                const res = await serverService.uploadFile(folderPath, localFile.name, localFile.checksum, bucketId, key, parentNodeId);
+                if (res?.status === 200) {
+                    logMessage(`File uploaded： ${localFile.name}`);
+                }
+            }
+        }
+
+        if (response?.nodes.length > 0) {
+            const serverFiles = response.nodes.map(node => {
+                if (!node.is_directory) {
+                    return {
+                        name: node.name,
+                        checksum: node.file.checksum
+                    };
+                }
+
+                return node;
+            });
+
+            for (const localFile of localFiles) {
+                if ($('#btn-stop-sync').hasClass('btn-active')) {
+                    uploading = false;
+                    return resolve()
+                };
+
+                const serverFile = serverFiles.find(file => file.name === localFile.name &&
+                    file.checksum === localFile.checksum)
+
+                if (typeof serverFile === 'undefined') {
+                    logMessage(`New file is found：${localFile.name}`);
+                    logMessage(`Uploading new file...: ${localFile.name}`);
+
+                    const res = await serverService.uploadFile(folderPath, localFile.name, localFile.checksum, bucketId, key, parentNodeId);
+                    if (res?.status === 200) {
+                        logMessage(`File uploaded： ${localFile.name}`);
+                    }
+                }
+            }
+        }
+
+        uploading = false;
+        resolve();
+    })
+}
+
+/**
+ * Logging
+ */
+function logMessage(message) {
+    const dateString = dayjs().format('YYYY/MM/DD HH:mm');
+    const logMsg = `${dateString} ${message}`
+    const logsFolder = app.getPath('logs');
+    log.info(logMsg);
+    log.transports.file.file = logsFolder + `/log_${store.get('log_id')}.log`;
+    $('#logTextarea').val(function (index, old) { return logMsg + '\n' + old; });
 }
